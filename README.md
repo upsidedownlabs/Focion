@@ -1,8 +1,8 @@
-# EEG Brain Balloon
+# Focion
 
 ![Game Screenshot](./game_image.png)
 
-EEG Brain Balloon is an interactive web-based visualization game that uses EEG data to create dynamic bubble animations. The project leverages the Web Bluetooth API to connect to a Bluetooth-enabled EEG device and processes the brainwave signals (Delta, Theta, Alpha, Beta, Gamma) to trigger animations and display real-time data.
+ Focion is an interactive web-based visualization game that uses EEG data to create dynamic bubble animations. The project leverages the Web Bluetooth API to connect to a Bluetooth-enabled EEG device and processes the brainwave signals (Delta, Theta, Alpha, Beta, Gamma) to trigger animations and display real-time data.
 
 ## Features
 
@@ -24,7 +24,6 @@ EEG Brain Balloon is an interactive web-based visualization game that uses EEG d
    - A compatible Bluetooth-enabled EEG device.
 
 2. **Usage:**
-   - Open the `index.html` file in your web browser.
    - Click the **Connect Device** button to search for and connect to your EEG device.
    - Once connected, click **Start Stream** to begin receiving and processing EEG data.
    - Adjust the **Beta Threshold** slider to set the sensitivity for triggering the bubble animations.
