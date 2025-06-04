@@ -44,7 +44,7 @@ Focion is an interactive web-based visualization game that uses EEG data to crea
 ## Troubleshooting
 
 - **Web Bluetooth Support:** If you encounter issues with device connectivity, ensure that your browser supports the Web Bluetooth API.
-- **EEG Device Compatibility:** Confirm that your EEG device advertises the expected name prefix (e.g., "NPG") and services.
+- **EEG Device Compatibility:** Confirm that your Neuro PlayGround Lite advertises the expected name prefix (e.g., "NPG") and services.
 
 ## License
 
