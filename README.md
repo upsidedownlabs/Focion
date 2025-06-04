@@ -2,7 +2,7 @@
 
 ![Game Screenshot](./game_image.png)
 
- Focion is an interactive web-based visualization game that uses EEG data to create dynamic bubble animations. The project leverages the Web Bluetooth API to connect to a Bluetooth-enabled EEG device and processes the brainwave signals (Delta, Theta, Alpha, Beta, Gamma) to trigger animations and display real-time data.
+Focion is an interactive web-based visualization game that uses EEG data to create dynamic bubble animations. The project leverages the Web Bluetooth API to connect to Neuro PlayGround Lite, which is a Bluetooth Low Energy (BLE) enabled EEG device, and processes the brainwave signals (Delta, Theta, Alpha, Beta, Gamma) to trigger animations and display real-time data.
 
 ## Features
 
