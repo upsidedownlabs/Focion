@@ -24,7 +24,7 @@ Focion is an interactive web-based visualization game that uses EEG data to crea
    - A compatible Bluetooth-enabled EEG device.
 
 2. **Usage:**
-   - Click the **Connect Device** button to search for and connect to your EEG device.
+   - Click the **Connect Device** button to search for and connect to your Neuro PlayGround Lite.
    - Once connected, click **Start Stream** to begin receiving and processing EEG data.
    - Adjust the **Beta Threshold** slider to set the sensitivity for triggering the bubble animations.
    - To disconnect, click the **Disconnect** button.
