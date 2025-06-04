@@ -31,7 +31,7 @@ Focion is an interactive web-based visualization game that uses EEG data to crea
 
 ## How It Works
 
-- **EEG Data Acquisition:** The application connects to the EEG device using BLE and starts streaming data.
+- **EEG Data Acquisition:** The application connects to the Neuro PlayGround Lite using BLE and starts streaming data.
 - **Signal Processing:** The EEG signals are normalized, filtered, and passed through an FFT processor to calculate the power across different frequency bands.
 - **Visualization:** Based on the processed EEG data, the application updates the on-screen bar graphs and animates the balloon. When the beta band power exceeds the set threshold, bubble animations are generated.
 - **Control Panel:** Users can manage the connection and data streaming through a simple and intuitive control panel.
