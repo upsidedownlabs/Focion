@@ -48,7 +48,7 @@ Focion is an interactive web-based visualization game that uses EEG data to crea
 
 ## License
 
-This project is open source. You're welcome to modify and use it as needed—just kindly remember to give appropriate credit.
+This project is open-source with a GPL-3.0 license. You're welcome to modify and use it as needed. kindly remember to read the licence terms & conditions and give appropriate credit.
 
 If you have any questions or would like to contribute, feel free to reach out or open an issue.
 
