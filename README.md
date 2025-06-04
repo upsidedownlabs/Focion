@@ -21,7 +21,7 @@ Focion is an interactive web-based visualization game that uses EEG data to crea
 
 1. **Prerequisites:**
    - A modern web browser (Chrome or Edge) with Web Bluetooth API support.
-   - A compatible Bluetooth-enabled EEG device.
+   - Neuro PlayGround Lite running [NPG-LITE-BLE](https://github.com/upsidedownlabs/Chords-Arduino-Firmware/blob/main/NPG-LITE-BLE/NPG-LITE-BLE.ino) chords firmware.
 
 2. **Usage:**
    - Click the **Connect Device** button to search for and connect to your Neuro PlayGround Lite.
