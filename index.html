@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EEG Focus Balloon</title>
+    <link rel="stylesheet" href="./style.css">
+</head>
+
+<body>
+    <!-- Light rays for underwater effect -->
+    <div class="light-ray" style="left: 10%; animation-delay: 0s;"></div>
+    <div class="light-ray" style="left: 30%; animation-delay: 3s;"></div>
+    <div class="light-ray" style="left: 50%; animation-delay: 6s;"></div>
+    <div class="light-ray" style="left: 70%; animation-delay: 9s;"></div>
+    <div class="light-ray" style="left: 90%; animation-delay: 12s;"></div>
+
+    <div class="container">
+        <div class="balloon"></div>
+        <div class="string"></div>
+    </div>
+
+    <div class="band-display">
+        <div class="band-row">
+            <span class="band-label">Delta</span>
+            <div class="band-bar-container">
+                <div id="deltaBar" class="band-bar delta-bar" style="width: 0%;"></div>
+            </div>
+            <span id="deltaValue">0%</span>
+        </div>
+        <div class="band-row">
+            <span class="band-label">Theta</span>
+            <div class="band-bar-container">
+                <div id="thetaBar" class="band-bar theta-bar" style="width: 0%;"></div>
+            </div>
+            <span id="thetaValue">0%</span>
+        </div>
+        <div class="band-row">
+            <span class="band-label">Alpha</span>
+            <div class="band-bar-container">
+                <div id="alphaBar" class="band-bar alpha-bar" style="width: 0%;"></div>
+            </div>
+            <span id="alphaValue">0%</span>
+        </div>
+        <div class="band-row">
+            <span class="band-label">Beta</span>
+            <div class="band-bar-container">
+                <div id="betaBar" class="band-bar beta-bar" style="width: 0%;"></div>
+            </div>
+            <span id="betaValue">0%</span>
+        </div>
+        <div class="band-row">
+            <span class="band-label">Gamma</span>
+            <div class="band-bar-container">
+                <div id="gammaBar" class="band-bar gamma-bar" style="width: 0%;"></div>
+            </div>
+            <span id="gammaValue">0%</span>
+        </div>
+    </div>
+
+    <div class="control-panel">
+        <div class="slider-container">
+            <span class="slider-label">Beta Threshold:</span>
+            <input type="range" id="betaThresholdSlider" min="0.1" max="0.9" step="0.05" value="0.4">
+            <span class="value-display" id="betaThresholdValue">0.40</span>
+        </div>
+        <div class="button-group">
+            <button id="connectBtn">Connect Device</button>
+            <button id="disconnectBtn" disabled>Disconnect</button>
+            <button id="startBtn" disabled>Start Stream</button>
+            <button id="stopBtn" disabled>Stop Stream</button>
+        </div>
+        <div class="status" id="statusText">Not connected</div>
+    </div>
+
+    <!-- JavaScript -->
+    <script>
+
+        // DOM elements
+        const balloon = document.querySelector('.balloon');
+        const container = document.querySelector('.container');
+        const betaThresholdSlider = document.getElementById('betaThresholdSlider');
+        const betaThresholdValue = document.getElementById('betaThresholdValue');
+        const connectBtn = document.getElementById("connectBtn");
+        const disconnectBtn = document.getElementById("disconnectBtn");
+        const startBtn = document.getElementById("startBtn");
+        const stopBtn = document.getElementById("stopBtn");
+        const statusText = document.getElementById("statusText");
+
+        // BLE constants
+        const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+        const DATA_CHAR_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+        const CONTROL_CHAR_UUID = "0000ff01-0000-1000-8000-00805f9b34fb";
+        const SINGLE_SAMPLE_LEN = 7, BLOCK_COUNT = 10;
+        const NEW_PACKET_LEN = SINGLE_SAMPLE_LEN * BLOCK_COUNT;
+
+        // EEG processing constants
+        const FFT_SIZE = 256;
+        const SAMPLE_RATE = 500;
+        const FREQ_RESOLUTION = SAMPLE_RATE / FFT_SIZE;
+        const DELTA_RANGE = [0.5, 4];
+        const THETA_RANGE = [4, 8];
+        const ALPHA_RANGE = [8, 12];
+        const BETA_RANGE = [12, 30];
+        const GAMMA_RANGE = [30, 45];
+
+        // Variables for BLE connection
+        let device = null, server = null, controlChar = null, dataChar = null;
+        let streaming = false, connected = false;
+        let prevSampleCounter = null, samplesReceived = 0;
+
+        // Variables for EEG processing
+        let fftBuffer = new Array(FFT_SIZE).fill(0);
+        let filterStateCh0 = { z1: 0, z2: 0, x1: 0 };
+        let betaThreshold = 0.40;  // initial threshold
+
+        // Bubble cooldown system
+        let lastBubbleTime = 0;
+        const BUBBLE_COOLDOWN = 300; // ms between bubble bursts
+
+        // Notch filter for 50Hz noise
+        class Notch {
+            constructor() {
+                this.z1_1 = 0; this.z2_1 = 0;
+                this.x_1 = 0;
+                this.currentSamplingRate = 500;
+            }
+            setSamplingRate(rate) { this.currentSamplingRate = rate; }
+            process(input, type) {
+                if (!type) return input;
+                let output = input;
+                // Simple example: 50Hz notch for 500Hz
+                if (this.currentSamplingRate === 500 && type === 1) {
+                    this.x_1 = output - (-1.56858163 * this.z1_1) - (0.96424138 * this.z2_1);
+                    output = 0.96508099 * this.x_1 + -1.56202714 * this.z1_1 + 0.96508099 * this.z2_1;
+                    this.z2_1 = this.z1_1;
+                    this.z1_1 = this.x_1;
+                }
+                return output;
+            }
+        }
+        let notchFilterCh0 = new Notch();
+        notchFilterCh0.setSamplingRate(500);
+
+        // FFT implementation
+        class FFT {
+            size;
+            cosTable;
+            sinTable;
+            constructor(size) {
+                this.size = size;
+                this.cosTable = new Float32Array(size / 2);
+                this.sinTable = new Float32Array(size / 2);
+                for (let i = 0; i < size / 2; i++) {
+                    this.cosTable[i] = Math.cos(-2 * Math.PI * i / size);
+                    this.sinTable[i] = Math.sin(-2 * Math.PI * i / size);
+                }
+            }
+            fft(real, imag) {
+                const n = this.size;
+                let j = 0;
+                for (let i = 0; i < n - 1; i++) {
+                    if (i < j) {
+                        [real[i], real[j]] = [real[j], real[i]];
+                        [imag[i], imag[j]] = [imag[j], imag[i]];
+                    }
+                    let k = n / 2;
+                    while (k <= j) { j -= k; k /= 2; }
+                    j += k;
+                }
+                for (let len = 2; len <= n; len *= 2) {
+                    const half = len / 2;
+                    for (let i = 0; i < n; i += len) {
+                        for (let j = i, k = 0; j < i + half; j++, k++) {
+                            const tRe = real[j + half] * this.cosTable[k] - imag[j + half] * this.sinTable[k];
+                            const tIm = real[j + half] * this.sinTable[k] + imag[j + half] * this.cosTable[k];
+                            real[j + half] = real[j] - tRe;
+                            imag[j + half] = imag[j] - tIm;
+                            real[j] += tRe;
+                            imag[j] += tIm;
+                        }
+                    }
+                }
+            }
+            computeMagnitudes(input) {
+                const real = new Float32Array(this.size);
+                const imag = new Float32Array(this.size);
+                real.set(input);
+                this.fft(real, imag);
+                const mags = new Float32Array(this.size / 2);
+                for (let i = 0; i < mags.length; i++) {
+                    mags[i] = Math.hypot(real[i], imag[i]) / (this.size / 2);
+                }
+                return mags;
+            }
+        }
+
+        const fftProcessor = new FFT(FFT_SIZE);
+
+        // Update threshold value from slider
+        betaThresholdSlider.addEventListener('input', (e) => {
+            betaThreshold = parseFloat(e.target.value);
+            betaThresholdValue.textContent = betaThreshold.toFixed(2);
+        });
+
+        // Create bubbles when beta threshold is exceeded
+        function createFocusBubbles() {
+            const now = Date.now();
+            if (now - lastBubbleTime < BUBBLE_COOLDOWN) return;
+            lastBubbleTime = now;
+
+            // Create 2-4 bubbles (reduced from 5-8)
+            const bubbleCount = Math.floor(Math.random() * 3) + 2;
+
+            for (let i = 0; i < bubbleCount; i++) {
+                const bubble = document.createElement('div');
+                bubble.className = 'bubble';
+
+                // Random size between 10px and 40px
+                const size = Math.floor(Math.random() * 30) + 10;
+                bubble.style.width = `${size}px`;
+                bubble.style.height = `${size}px`;
+
+                // Position bubble at balloon center
+                const balloonRect = balloon.getBoundingClientRect();
+                const startX = balloonRect.left + balloonRect.width / 2 - size / 2;
+                const startY = balloonRect.top + balloonRect.height / 2 - size / 2;
+
+                bubble.style.left = `${startX}px`;
+                bubble.style.top = `${startY}px`;
+
+                // Set random direction for bubble to travel
+                const angle = Math.random() * Math.PI * 2;
+                const distance = 100 + Math.random() * 200;
+                const tx = Math.cos(angle) * distance;
+                const ty = Math.sin(angle) * distance - 100; // Mostly upward
+
+                bubble.style.setProperty('--tx', `${tx}px`);
+                bubble.style.setProperty('--ty', `${ty}px`);
+
+                // Remove bubble after animation completes
+                bubble.addEventListener('animationend', () => {
+                    bubble.remove();
+                });
+
+                document.body.appendChild(bubble);
+            }
+        }
+
+        // Expose bubble creation function globally
+        window.createFocusBubbles = createFocusBubbles;
+
+        // Utility functions from the original code
+        function normalizeSample(sample) {
+            const a = 4096;
+            return (sample - a / 2) * (2 / a);
+        }
+
+        function applyFilter(input, state) {
+            state.x1 = input - (-1.47548044 * state.z1) - (0.58691951 * state.z2);
+            const output = 0.02785977 * state.x1 + 0.05571953 * state.z1 + 0.02785977 * state.z2;
+            state.z2 = state.z1;
+            state.z1 = state.x1;
+            return output;
+        }
+
+        function calculateBandPower(fftMagnitudes, freqRange) {
+            const [startFreq, endFreq] = freqRange;
+            const startIndex = Math.max(1, Math.floor(startFreq / FREQ_RESOLUTION));
+            const endIndex = Math.min(Math.floor(endFreq / FREQ_RESOLUTION), fftMagnitudes.length - 1);
+            let power = 0;
+            for (let i = startIndex; i <= endIndex; i++) {
+                power += fftMagnitudes[i] * fftMagnitudes[i];
+            }
+            return power;
+        }
+
+        // 1) Multi-band smoother class
+        class BandSmoother {
+            constructor(bufferSize) {
+                this.bufferSize = bufferSize;
+                this.buffers = {};
+                this.sums = {};
+                this.index = 0;
+
+                ['delta', 'theta', 'alpha', 'beta', 'gamma'].forEach(band => {
+                    this.buffers[band] = new Array(bufferSize).fill(0);
+                    this.sums[band] = 0;
+                });
+            }
+
+            // call once per update with an object of all 5 new values
+            updateAll(bandValues) {
+                for (const band in bandValues) {
+                    const val = bandValues[band];
+                    this.sums[band] -= this.buffers[band][this.index];
+                    this.sums[band] += val;
+                    this.buffers[band][this.index] = val;
+                }
+                this.index = (this.index + 1) % this.bufferSize;
+            }
+
+            // retrieve the current smoothed value for one band
+            getSmoothed(band) {
+                return this.sums[band] / this.bufferSize;
+            }
+
+            // reset everything (e.g. on disconnect)
+            clear() {
+                for (const band in this.buffers) {
+                    this.buffers[band].fill(0);
+                    this.sums[band] = 0;
+                }
+                this.index = 0;
+            }
+        }
+
+        // 2) Instantiate at top of your script
+        const smoother = new BandSmoother(128);
+
+
+        function updateBarGraph(deltaP, thetaP, alphaP, betaP, gammaP) {
+            // total power across all bands
+            const total = deltaP + thetaP + alphaP + betaP + gammaP;
+            if (total <= 0) return;
+
+            // 1) compute instantaneous relative power for each band
+            const rels = {
+                delta: deltaP / total,
+                theta: thetaP / total,
+                alpha: alphaP / total,
+                beta: betaP / total,
+                gamma: gammaP / total
+            };
+
+            // 2) feed all five into the smoother
+            smoother.updateAll(rels);
+
+            // 3) retrieve the smoothed values
+            const smooth = {
+                delta: smoother.getSmoothed('delta'),
+                theta: smoother.getSmoothed('theta'),
+                alpha: smoother.getSmoothed('alpha'),
+                beta: smoother.getSmoothed('beta'),
+                gamma: smoother.getSmoothed('gamma')
+            };
+
+            // 4) update each bar’s width and its label text
+            ['delta', 'theta', 'alpha', 'beta', 'gamma'].forEach(band => {
+                const pct = Math.round(smooth[band] * 100);
+                document.getElementById(`${band}Bar`).style.width = `${pct}%`;
+                document.getElementById(`${band}Value`).textContent = `${pct}%`;
+            });
+
+            // 5) (optional) bubble logic based on both instant and smoothed beta
+            if (rels.beta >= betaThreshold * 1.1 && smooth.beta >= betaThreshold) {
+                createFocusBubbles();
+            }
+        }
+
+        function processFFT() {
+            if (fftBuffer.length < FFT_SIZE) return;
+            const fftMags = fftProcessor.computeMagnitudes(fftBuffer);
+            const deltaPower = calculateBandPower(fftMags, DELTA_RANGE);
+            const thetaPower = calculateBandPower(fftMags, THETA_RANGE);
+            const alphaPower = calculateBandPower(fftMags, ALPHA_RANGE);
+            const betaPower = calculateBandPower(fftMags, BETA_RANGE);
+            const gammaPower = calculateBandPower(fftMags, GAMMA_RANGE);
+            updateBarGraph(deltaPower, thetaPower, alphaPower, betaPower, gammaPower);
+        }
+
+        function updateData(eegValue) {
+            eegValue = notchFilterCh0.process(eegValue, 1);
+            fftBuffer.push(eegValue);
+            if (fftBuffer.length > FFT_SIZE) fftBuffer.shift();
+            if (samplesReceived % 10 === 0) processFFT();
+        }
+
+        function processSample(dataView) {
+            if (dataView.byteLength !== SINGLE_SAMPLE_LEN) return;
+
+            const sampleCounter = dataView.getUint8(0);
+            prevSampleCounter = sampleCounter;
+
+            // Read EEG channel
+            const rawEEG = dataView.getInt16(1, false);
+
+            // Process EEG
+            const normEEG = normalizeSample(Math.max(0, Math.min(4095, rawEEG)));
+            const filteredEEG = applyFilter(normEEG, filterStateCh0);
+            updateData(filteredEEG);
+            samplesReceived++;
+        }
+
+        function handleIncomingSamples(event) {
+            const value = event.target.value;
+            if (value.byteLength === NEW_PACKET_LEN) {
+                for (let i = 0; i < NEW_PACKET_LEN; i += SINGLE_SAMPLE_LEN) {
+                    const sampleBuf = value.buffer.slice(i, i + SINGLE_SAMPLE_LEN);
+                    processSample(new DataView(sampleBuf));
+                }
+            } else if (value.byteLength === SINGLE_SAMPLE_LEN) {
+                processSample(new DataView(value.buffer));
+            }
+        }
+        function clearBarGraph() {
+            // for each band, reset width and label
+            ['delta', 'theta', 'alpha', 'beta', 'gamma'].forEach(band => {
+                document.getElementById(`${band}Bar`).style.width = '0%';
+                document.getElementById(`${band}Value`).textContent = '';  // blank instead of “0%”
+            });
+        }
+
+        function updateButtonStates() {
+            connectBtn.disabled = connected || streaming;
+            disconnectBtn.disabled = !connected;
+            startBtn.disabled = !connected || streaming;
+            stopBtn.disabled = !streaming;
+
+            if (!connected) statusText.textContent = "Not connected";
+            else if (!streaming) statusText.textContent = "Connected but not streaming";
+            else statusText.textContent = "Connected and streaming data";
+        }
+
+        async function connectBLE() {
+            try {
+                if (!navigator.bluetooth) {
+                    alert("Web Bluetooth API not available. Use Chrome or Edge.");
+                    return;
+                }
+                device = await navigator.bluetooth.requestDevice({
+                    filters: [{ namePrefix: "NPG" }],
+                    optionalServices: [SERVICE_UUID],
+                });
+                server = await device.gatt.connect();
+                const service = await server.getPrimaryService(SERVICE_UUID);
+                controlChar = await service.getCharacteristic(CONTROL_CHAR_UUID);
+                dataChar = await service.getCharacteristic(DATA_CHAR_UUID);
+                connected = true; streaming = false;
+                fftBuffer = new Array(FFT_SIZE).fill(0);
+                updateButtonStates();
+                console.log("Device connected.");
+            } catch (err) {
+                console.log("Error:", err);
+                alert("Connection error: " + err);
+            }
+        }
+
+        async function disconnectBLE() {
+            try {
+                if (device && device.gatt.connected) {
+                    if (streaming) await stopStream();
+                    device.gatt.disconnect();
+                }
+                connected = false;
+                streaming = false;
+                updateButtonStates();
+                clearBarGraph();
+                console.log("Device disconnected.");
+            } catch (err) {
+                console.log("Error disconnecting:", err);
+            }
+        }
+
+        async function startStream() {
+            try {
+                if (!dataChar || !controlChar) return;
+                await controlChar.writeValue(new TextEncoder().encode("START"));
+                await dataChar.startNotifications();
+                dataChar.addEventListener("characteristicvaluechanged", handleIncomingSamples);
+                streaming = true;
+                updateButtonStates();
+                console.log("Streaming started.");
+            } catch (err) {
+                console.log("Error starting stream:", err);
+                alert("Error starting stream: " + err);
+            }
+        }
+
+        async function stopStream() {
+            try {
+                if (dataChar && streaming) {
+                    await dataChar.stopNotifications();
+                    dataChar.removeEventListener("characteristicvaluechanged", handleIncomingSamples);
+                    streaming = false;
+                    updateButtonStates();
+                    console.log("Streaming stopped.");
+                }
+            } catch (err) {
+                console.log("Error stopping stream:", err);
+            }
+        }
+
+        // Event listeners for buttons
+        connectBtn.addEventListener("click", connectBLE);
+        disconnectBtn.addEventListener("click", disconnectBLE);
+        startBtn.addEventListener("click", startStream);
+        stopBtn.addEventListener("click", stopStream);
+    </script>
+</body>
+
+</html>
